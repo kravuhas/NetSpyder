@@ -1,0 +1,35 @@
+name: netspyder
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sniffer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no arquivo .env}
+      POSTGRES_DB: sniffer
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sniffer -d sniffer"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://sniffer:${POSTGRES_PASSWORD}@db:5432/sniffer
+      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+    ports:
+      - "127.0.0.1:3000:3000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  db-data:

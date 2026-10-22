@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetSpyder | SIEM & Threat Intel</title>
+<style>
+  :root {
+    --bg-base: #07090e;
+    --bg-surface: #0f131c;
+    --bg-hover: #182030;
+    --border: #1e293b;
+    --text-main: #e2e8f0;
+    --text-muted: #8b9bb4;
+    --text-dark: #475569;
+    
+    /* Cores de Protocolo e Status */
+    --c-tcp: #38bdf8;
+    --c-udp: #a78bfa;
+    --c-icmp: #fbbf24;
+    --c-other: #10b981;
+    --c-danger: #ef4444;
+    --c-alert: #f97316;
+    --c-accent: #3b82f6;
+    
+    --font-sans: system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  body {
+    background-color: var(--bg-base);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .mono { font-family: var(--font-mono); }
+  .flex { display: flex; }
+  .items-center { align-items: center; }
+  .justify-between { justify-content: space-between; }
+  .gap-2 { gap: 8px; } .gap-4 { gap: 16px; }
+  
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-dark); }
+
+  header {
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+    height: 56px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10;
+  }
+
+  .brand { font-size: 16px; font-weight: 700; letter-spacing: 1px; display: flex; align-items: center; gap: 10px; }
+  .brand svg { color: var(--c-accent); width: 20px; height: 20px; }
+
+  .status-indicator { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; color: var(--c-other); background: rgba(16, 185, 129, 0.1); padding: 4px 10px; border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.2); }
+  .status-indicator.offline { color: var(--c-danger); background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); }
+  .pulse { width: 6px; height: 6px; background: currentColor; border-radius: 50%; box-shadow: 0 0 8px currentColor; animation: blink 2s infinite; }
+  .offline .pulse { animation: none; box-shadow: none; }
+  
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .btn {
+    background: var(--bg-hover); color: var(--text-main);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 6px 12px; font-size: 12px; font-family: inherit;
+    cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { border-color: var(--text-muted); }
+  .btn-primary { background: rgba(59, 130, 246, 0.1); border-color: var(--c-accent); color: var(--c-accent); }
+  .btn-primary:hover { background: rgba(59, 130, 246, 0.2); }
+
+  .layout { display: flex; flex: 1; overflow: hidden; }
+  
+  .sidebar { width: 260px; background: var(--bg-surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  .nav-menu { padding: 12px 0; list-style: none; }
+  .nav-item { padding: 10px 20px; color: var(--text-muted); display: flex; align-items: center; gap: 10px; cursor: pointer; transition: 0.2s; border-left: 2px solid transparent; }
+  .nav-item:hover { color: var(--text-main); background: var(--bg-hover); }
+  .nav-item.active { color: var(--c-accent); border-left-color: var(--c-accent); background: rgba(59, 130, 246, 0.05); }
+  .nav-item svg { width: 16px; height: 16px; }
+
+  .workspace { flex: 1; padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+  .view { display: none; flex-direction: column; gap: 20px; animation: fadeIn 0.3s; }
+  .view.active { display: flex; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+  .panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; }
+  .panel-header { padding: 14px 20px; border-bottom: 1px solid var(--border); font-size: 14px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+  .panel-body { padding: 20px; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+  .kpi-card { padding: 16px; background: var(--bg-base); border: 1px solid var(--border); border-radius: 6px; }
+  .kpi-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px; }
+  .kpi-value { font-size: 24px; font-weight: 700; display: flex; align-items: baseline; gap: 8px; }
+  .kpi-unit { font-size: 12px; color: var(--text-dark); font-weight: 400; }
+
+  .meter { height: 6px; background: var(--bg-base); border-radius: 3px; display: flex; overflow: hidden; margin-top: 12px; }
+  .meter-segment { transition: width 0.5s ease; }
+  .legend { display: flex; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; text-align: left; }
+  th { padding: 10px 16px; background: var(--bg-base); color: var(--text-muted); font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--border); font-weight: 600; white-space: nowrap; }
+  td { padding: 10px 16px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tbody tr:hover { background: var(--bg-hover); }
+  tbody tr:last-child td { border-bottom: none; }
+  
+  .tag { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; background: rgba(255,255,255,0.05); }
+  .tag-danger { background: rgba(239, 68, 68, 0.15); color: var(--c-danger); border: 1px solid rgba(239, 68, 68, 0.3); }
+  .tag-alert { background: rgba(249, 115, 22, 0.15); color: var(--c-alert); border: 1px solid rgba(249, 115, 22, 0.3); }
+  .tag-tcp { background: rgba(56, 189, 248, 0.15); color: var(--c-tcp); border: 1px solid rgba(56, 189, 248, 0.3); }
+
+  .filters { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  input, select { background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border); border-radius: 4px; padding: 6px 12px; font-family: inherit; font-size: 12px; outline: none; transition: 0.2s; }
+  input:focus, select:focus { border-color: var(--c-accent); box-shadow: 0 0 0 1px var(--c-accent); }
+  
+  .empty-state { text-align: center; padding: 40px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    NetSpyder SIEM / SOC Console
+  </div>
+  <div class="flex items-center gap-4">
+    <div id="status-badge" class="status-indicator">
+      <div class="pulse"></div>
+      <span id="status-text">Conectando...</span>
+    </div>
+    <button id="btn-pause" class="btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+      Pausar
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <ul class="nav-menu">
+      <li class="nav-item active" data-target="view-overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        Overview SOC
+      </li>
+      <li class="nav-item" data-target="view-threats">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        Threat Intel & IDS
+      </li>
+      <li class="nav-item" data-target="view-endpoints">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+        Inventário Endpoints
+      </li>
+      <li class="nav-item" data-target="view-events">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        Packet Inspector (PCAP)
+      </li>
+    </ul>
+  </aside>
+
+  <main class="workspace">
+    
+    <!-- OVERVIEW VIEW -->
+    <div id="view-overview" class="view active">
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-title">Total Capturado</div>
+          <div class="kpi-value mono" id="kpi-total">0 <span class="kpi-unit">pkts</span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Taxa de Tráfego</div>
+          <div class="kpi-value mono" id="kpi-rate">0 <span class="kpi-unit">pkt/s</span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Hosts Ativos</div>
+          <div class="kpi-value mono" id="kpi-devices">0 <span class="kpi-unit">hosts</span></div>
+        </div>
+        <div class="kpi-card" style="border-color: rgba(239, 68, 68, 0.3);">
+          <div class="kpi-title" style="color: var(--c-danger);">Alertas de Segurança</div>
+          <div class="kpi-value mono" id="kpi-alerts" style="color: var(--c-danger);">0 <span class="kpi-unit">eventos</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">Distribuição de Protocolos da Rede</div>
+        <div class="panel-body">
+          <div id="proto-meter" class="meter"></div>
+          <div id="proto-legend" class="legend"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">Top Talkers (IPs com maior tráfego)</div>
+        <div class="panel-body" style="padding: 0;">
+          <table id="top-talkers-table">
+            <thead><tr><th>IP Host</th><th>Volume de Pacotes</th></tr></thead>
+            <tbody id="top-talkers-body"><tr><td colspan="2" class="empty-state">Aguardando tráfego...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- THREAT INTEL & IDS VIEW -->
+    <div id="view-threats" class="view">
+      <div class="panel">
+        <div class="panel-header items-center">
+          <span>Detecção de Ameaças, Port Scans e Anomalias (IDS)</span>
+          <span class="tag tag-danger">Monitoramento Ativo</span>
+        </div>
+        <div class="panel-body" style="display: flex; flex-direction: column; gap: 16px;">
+          <p style="color: var(--text-muted); font-size: 12px;">
+            Este módulo analisa anomalias comportamentais no tráfego capturado, como varreduras de portas (Port Scans), tráfego sospeito associado a potenciais malwares/C2, pacotes RST em massa e ICMP Destination Unreachable.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Severidade</th>
+                  <th>Origem (IP)</th>
+                  <th>Alvo / Destino</th>
+                  <th>Assinatura / Evento Detectado</th>
+                </tr>
+              </thead>
+              <tbody id="threats-body">
+                <tr><td colspan="5" class="empty-state">Nenhum alerta de segurança registrado até o momento. Rede segura.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ENDPOINTS VIEW -->
+    <div id="view-endpoints" class="view">
+      <div class="panel">
+        <div class="panel-header">Inventário de Endpoints</div>
+        <div class="panel-body">
+          <div class="filters">
+            <input type="text" id="filter-ep-ip" placeholder="Buscar IPv4..." class="mono" size="20">
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Endereço IP</th><th>Total de Pacotes</th><th>Escopo da Rede</th></tr></thead>
+              <tbody id="endpoints-body"><tr><td colspan="3" class="empty-state">Nenhum endpoint detectado.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EVENTS / PACKET INSPECTOR VIEW -->
+    <div id="view-events" class="view">
+      <div class="panel flex" style="flex:1;">
+        <div class="panel-header items-center">
+          <span>Inspetor de Pacotes Profissional (Estilo Wireshark)</span>
+          <button id="btn-export" class="btn">Exportar Logs (CSV)</button>
+        </div>
+        <div class="panel-body flex" style="flex-direction: column; gap: 16px; flex: 1;">
+          <div class="filters">
+            <input type="text" id="filter-ev-ip" placeholder="Filtrar IP (Origem/Destino)" class="mono" size="22">
+            <select id="filter-ev-proto">
+              <option value="">Todos os Protocolos</option>
+              <option value="TCP">TCP</option>
+              <option value="UDP">UDP</option>
+              <option value="ICMP">ICMP</option>
+            </select>
+            <button id="btn-clear-ev" class="btn">Limpar Filtros</button>
+          </div>
+          <div class="table-wrap" style="flex: 1;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Proto</th>
+                  <th>Source IP : Port</th>
+                  <th></th>
+                  <th>Destination IP : Port</th>
+                  <th>Flags / Detalhes</th>
+                  <th>Len</th>
+                  <th>TTL</th>
+                </tr>
+              </thead>
+              <tbody id="events-body">
+                <tr><td colspan="8" class="empty-state">Inicializando sniffer...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+const C_COLORS = { TCP: "var(--c-tcp)", UDP: "var(--c-udp)", ICMP: "var(--c-icmp)" };
+const getColor = p => C_COLORS[p] || "var(--c-other)";
+const el = id => document.getElementById(id);
+
+let state = {
+  paused: false,
+  lastTotalPkts: 0,
+  lastRefreshTime: Date.now(),
+  filterIp: "",
+  filterProto: "",
+  controller: null
+};
+
+const fmtNum = n => Number(n).toLocaleString("pt-BR");
+const fmtTime = iso => {
+  const d = new Date(iso);
+  return `${d.toLocaleTimeString("pt-BR")}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+};
+
+function createEl(tag, text, classes = "") {
+  const e = document.createElement(tag);
+  if (classes) e.className = classes;
+  if (text) e.textContent = text;
+  return e;
+}
+
+function updateStatus(isOnline) {
+  const badge = el("status-badge");
+  const text = el("status-text");
+  if (isOnline) {
+    badge.classList.remove("offline");
+    text.textContent = "SIEM Online";
+  } else {
+    badge.classList.add("offline");
+    text.textContent = "API Desconectada";
+  }
+}
+
+async function fetchJson(url) {
+  const res = await fetch(url, { signal: state.controller.signal });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+function renderOverview(stats) {
+  el("kpi-total").firstChild.nodeValue = fmtNum(stats.total) + " ";
+  
+  const now = Date.now();
+  if (state.lastTotalPkts > 0 && now > state.lastRefreshTime) {
+    const rate = Math.round(((stats.total - state.lastTotalPkts) / (now - state.lastRefreshTime)) * 1000);
+    el("kpi-rate").firstChild.nodeValue = fmtNum(Math.max(0, rate)) + " ";
+  }
+  state.lastTotalPkts = stats.total;
+  state.lastRefreshTime = now;
+
+  const entries = Object.entries(stats.por_protocolo || {}).sort((a,b) => b[1] - a[1]);
+  const meter = el("proto-meter");
+  const legend = el("proto-legend");
+  meter.innerHTML = ""; legend.innerHTML = "";
+
+  entries.forEach(([p, count]) => {
+    const pct = stats.total ? (count / stats.total) * 100 : 0;
+    const color = getColor(p);
+    
+    const seg = document.createElement("div");
+    seg.className = "meter-segment";
+    seg.style.width = `${pct}%`;
+    seg.style.backgroundColor = color;
+    seg.title = `${p}: ${fmtNum(count)}`;
+    meter.appendChild(seg);
+
+    const legItem = createEl("div", "", "legend-item");
+    const dot = createEl("div", "", "legend-dot");
+    dot.style.backgroundColor = color;
+    legItem.appendChild(dot);
+    legItem.appendChild(document.createTextNode(`${p} (${pct.toFixed(1)}%)`));
+    legend.appendChild(legItem);
+  });
+
+  const tbody = el("top-talkers-body");
+  tbody.innerHTML = "";
+  (stats.top_ips || []).forEach(t => {
+    const tr = document.createElement("tr");
+    tr.className = "mono";
+    tr.appendChild(createEl("td", t.ip));
+    tr.appendChild(createEl("td", fmtNum(t.pacotes)));
+    tbody.appendChild(tr);
+  });
+}
+
+function renderThreats(threats = []) {
+  el("kpi-alerts").firstChild.nodeValue = fmtNum(threats.length) + " ";
+  const tbody = el("threats-body");
+  tbody.innerHTML = "";
+
+  if (threats.length === 0) {
+    const tr = document.createElement("tr");
+    const td = createEl("td", "Nenhum alerta de segurança ou anomalia detectada no momento.", "empty-state");
+    td.colSpan = 5;
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  threats.forEach(th => {
+    const tr = document.createElement("tr");
+    tr.className = "mono";
+
+    tr.appendChild(createEl("td", fmtTime(th.timestamp), "text-muted"));
+
+    const tdSev = document.createElement("td");
+    const tag = createEl("span", th.severity, `tag ${th.severity === 'HIGH' ? 'tag-danger' : 'tag-alert'}`);
+    tdSev.appendChild(tag);
+    tr.appendChild(tdSev);
+
+    tr.appendChild(createEl("td", th.src));
+    tr.appendChild(createEl("td", th.dst || "Broadcast/Local"));
+    tr.appendChild(createEl("td", th.signature));
+
+    tbody.appendChild(tr);
+  });
+}
+
+function renderEndpoints(devices) {
+  el("kpi-devices").firstChild.nodeValue = fmtNum(devices.length) + " ";
+  const tbody = el("endpoints-body");
+  tbody.innerHTML = "";
+  
+  const filtered = devices.filter(d => d.ip.includes(el("filter-ep-ip").value));
+  
+  if (filtered.length === 0) {
+    const tr = document.createElement("tr");
+    const td = createEl("td", "Nenhum endpoint encontrado.", "empty-state");
+    td.colSpan = 3;
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  filtered.forEach(d => {
+    const tr = document.createElement("tr");
+    tr.className = "mono";
+    tr.appendChild(createEl("td", d.ip));
+    tr.appendChild(createEl("td", fmtNum(d.packets)));
+    
+    let scope = "Externo / Público";
+    if (d.ip.startsWith("192.168.") || d.ip.startsWith("10.") || d.ip.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)) scope = "Rede Interna (LAN)";
+    else if (d.ip.startsWith("127.")) scope = "Loopback";
+    else if (d.ip.startsWith("224.") || d.ip.startsWith("239.")) scope = "Multicast";
+    
+    const tdScope = document.createElement("td");
+    tdScope.appendChild(createEl("span", scope, "tag"));
+    tr.appendChild(tdScope);
+    
+    tbody.appendChild(tr);
+  });
+}
+
+function renderEvents(packets) {
+  const tbody = el("events-body");
+  tbody.innerHTML = "";
+
+  if (packets.length === 0) {
+    const tr = document.createElement("tr");
+    const td = createEl("td", "Nenhum pacote encontrado para os filtros atuais.", "empty-state");
+    td.colSpan = 8;
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  packets.forEach(p => {
+    const tr = document.createElement("tr");
+    tr.className = "mono";
+    
+    tr.appendChild(createEl("td", fmtTime(p.timestamp), "text-muted"));
+    
+    const tdProto = document.createElement("td");
+    const tagProto = createEl("span", p.protocol, "tag tag-tcp");
+    tdProto.appendChild(tagProto);
+    tr.appendChild(tdProto);
+    
+    tr.appendChild(createEl("td", `${p.src} : ${p.sport || '-'}`));
+    tr.appendChild(createEl("td", "→", "text-muted"));
+    tr.appendChild(createEl("td", `${p.dst} : ${p.dport || '-'}`));
+
+    // Decodificação de Flags / Erros e Anomalias do cabeçalho
+    const flagsInfo = p.flags ? `[${p.flags}]` : (p.info || 'Normal');
+    tr.appendChild(createEl("td", flagsInfo));
+    tr.appendChild(createEl("td", `${p.len || 64} B`));
+    tr.appendChild(createEl("td", `${p.ttl || 64}`));
+    
+    tbody.appendChild(tr);
+  });
+}
+
+async function refreshData() {
+  if (state.paused) return;
+  
+  if (state.controller) state.controller.abort();
+  state.controller = new AbortController();
+
+  try {
+    const [stats, devices, packetsRaw] = await Promise.all([
+      fetchJson("/api/stats"),
+      fetchJson("/api/devices?limit=1000"),
+      fetchJson(`/api/packets?limit=100${state.filterIp ? '&ip='+state.filterIp : ''}${state.filterProto ? '&protocol='+state.filterProto : ''}`)
+    ]);
+    
+    renderOverview(stats);
+    renderEndpoints(devices);
+    renderEvents(packetsRaw);
+
+    // Endpoint simulado ou real de Threat Intel (pode adaptar para /api/threats se criado na sua API)
+    let threats = [];
+    try {
+      threats = await fetchJson("/api/threats");
+    } catch(e) {
+      // Simulação fallback caso a rota ainda não exista no backend Python
+      threats = packetsRaw
+        .filter(p => p.flags === 'RST' || p.flags === 'SYN (No Resp)' || p.protocol === 'ICMP')
+        .slice(0, 5)
+        .map(p => ({
+          timestamp: p.timestamp,
+          severity: p.flags === 'RST' ? 'MEDIUM' : 'HIGH',
+          src: p.src,
+          dst: p.dst,
+          signature: p.flags === 'RST' ? 'Conexão TCP Resetada (RST/Porta Fechada)' : 'Varredura Potencial / SYN Anômalo'
+        }));
+    }
+    renderThreats(threats);
+
+    updateStatus(true);
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      updateStatus(false);
+      console.error("Telemetry Error:", err);
+    }
+  }
+}
+
+document.querySelectorAll(".nav-item").forEach(item => {
+  item.addEventListener("click", (e) => {
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    
+    e.currentTarget.classList.add("active");
+    el(e.currentTarget.dataset.target).classList.add("active");
+  });
+});
+
+el("btn-pause").addEventListener("click", () => {
+  state.paused = !state.paused;
+  const btn = el("btn-pause");
+  if (state.paused) {
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Retomar`;
+    btn.classList.add("btn-primary");
+    el("status-text").textContent = "Pausado";
+    el("status-badge").classList.add("offline");
+  } else {
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pausar`;
+    btn.classList.remove("btn-primary");
+    refreshData();
+  }
+});
+
+el("filter-ep-ip").addEventListener("input", () => refreshData());
+
+el("filter-ev-ip").addEventListener("input", (e) => {
+  state.filterIp = e.target.value.trim();
+  refreshData();
+});
+
+el("filter-ev-proto").addEventListener("change", (e) => {
+  state.filterProto = e.target.value;
+  refreshData();
+});
+
+el("btn-clear-ev").addEventListener("click", () => {
+  state.filterIp = "";
+  state.filterProto = "";
+  el("filter-ev-ip").value = "";
+  el("filter-ev-proto").value = "";
+  refreshData();
+});
+
+refreshData();
+setInterval(() => {
+  if (!document.hidden) refreshData();
+}, 2500);
+</script>
+</body>
+</html>
